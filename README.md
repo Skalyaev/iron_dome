@@ -24,11 +24,8 @@ sudo apt install -y make
 sudo apt install -y docker.io
 ```
 ```bash
-link=Skalyaeve/iron_dome
-name=iron_dome
-
-git clone https://github.com/$link.git $name
-cd $name && sudo make docker
+git clone https://github.com/Skalyaeve/iron_dome.git
+cd iron_dome && sudo make docker
 ```
 
 ## Usage
