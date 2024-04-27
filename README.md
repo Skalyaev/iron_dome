@@ -33,11 +33,12 @@ cd iron_dome && sudo make docker
 sudo make docker-exec
 ```
 ```bash
-irondome/IronDome
+irondome/IronDome infection
 stockholm/stockholm
 ./openssl_cmd.sh
 # enter a password
-less /var/log/IronDome.log
+sleep 5
+cat /var/log/IronDome.log
 ```
 ```bash
 sudo make docker-stop

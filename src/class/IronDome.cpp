@@ -146,16 +146,14 @@ int IronDome::launch()
                 return 0;
 
         pid_t sid = setsid();
-        std::cout << "[ PID " << sid << " ] Iron Dome daemon running." << std::endl;
         if (sid < 0)
                 exit(-1);
+        std::cout << "[ PID " << sid << " ] Iron Dome daemon running." << std::endl;
 
         umask(0);
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);
-        if (chdir("/"))
-                exit(errno);
         this->_my_time = 0;
         this->_logs = "----------------| I R O N   D O M E |----------------\n";
 
@@ -188,7 +186,12 @@ int IronDome::launch()
         this->_logs += "[ INFO ] inotify_fd set: " + std::to_string(this->_inotify_fd) + '\n';
 
         for (std::string dir : this->_workin_dirs)
+        {
+                dir = realpath(dir.c_str(), NULL);
                 this->_add_watches(dir);
+        }
+        if (chdir("/"))
+                exit(errno);
         this->_watch_crypto_cmds();
         this->_work();
         return -1;
@@ -236,50 +239,62 @@ std::vector<std::string> IronDome::_split_str(const std::string &src, const char
 void IronDome::_add_watches(const std::string &path)
 {
         struct stat s;
-        if (stat(path.c_str(), &s) == 0)
+        if (stat(path.c_str(), &s) != 0)
         {
-                if ((s.st_mode & S_IFMT) == S_IFDIR)
-                {
-                        const int wd = inotify_add_watch(this->_inotify_fd, path.c_str(), IN_ACCESS | IN_MODIFY | IN_CREATE);
-                        if (wd < 0)
-                        {
-                                this->_logs += "[ ERROR ] inotify_add_watch(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
-                                return;
-                        }
-                        this->_watch_map[wd] = path;
-                        this->_logs += "[ INFO ] Watching directory: " + path + '\n';
-
-                        DIR *dir = opendir(path.c_str());
-                        if (!dir)
-                        {
-                                this->_logs += "[ ERROR ] opendir(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
-                                return;
-                        }
-
-                        struct dirent *entry;
-                        while ((entry = readdir(dir)))
-                        {
-                                if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
-                                        this->_add_watches(path + '/' + entry->d_name);
-                                else if (entry->d_type == DT_REG)
-                                        this->_add_watches(path + '/' + entry->d_name);
-                        }
-                        closedir(dir);
-                }
-                else if ((s.st_mode & S_IFMT) == S_IFREG)
-                {
-                        const int wd = inotify_add_watch(this->_inotify_fd, path.c_str(), IN_ACCESS | IN_MODIFY);
-                        if (wd < 0)
-                        {
-                                this->_logs += "[ ERROR ] inotify_add_watch(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
-                                return;
-                        }
-                        this->_watch_map[wd] = path;
-                        this->_logs += "[ INFO ] Watching file: " + path + '\n';
-                }
+            this->_logs += "[ ERROR ] stat(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+            return;
         }
-        else
-                this->_logs += "[ ERROR ] stat(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+        if ((s.st_mode & S_IFMT) == S_IFDIR)
+        {
+                const int wd = inotify_add_watch(this->_inotify_fd, path.c_str(), IN_ACCESS | IN_MODIFY | IN_CREATE);
+                if (wd < 0)
+                {
+                        this->_logs += "[ ERROR ] inotify_add_watch(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+                        return;
+                }
+                this->_watch_map[wd] = path;
+                this->_logs += "[ INFO ] Watching directory: " + path + '\n';
+
+                DIR *dir = opendir(path.c_str());
+                if (!dir)
+                {
+                        this->_logs += "[ ERROR ] opendir(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+                        return;
+                }
+
+                struct dirent *entry;
+                while ((entry = readdir(dir)))
+                {
+                        if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+                                this->_add_watches(path + '/' + entry->d_name);
+                        else if (entry->d_type == DT_REG)
+                                this->_add_watches(path + '/' + entry->d_name);
+                }
+                closedir(dir);
+        }
+        else if ((s.st_mode & S_IFMT) == S_IFREG)
+        {
+                const int wd = inotify_add_watch(this->_inotify_fd, path.c_str(), IN_ACCESS | IN_MODIFY);
+                if (wd < 0)
+                {
+                        this->_logs += "[ ERROR ] inotify_add_watch(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+                        return;
+                }
+                this->_watch_map[wd] = path;
+                this->_logs += "[ INFO ] Watching file: " + path + '\n';
+                this->_launch_entropy_update(path);
+        }
+        else if (S_ISCHR(s.st_mode))
+        {
+            const int wd = inotify_add_watch(this->_inotify_fd, path.c_str(), IN_ACCESS | IN_MODIFY);
+            if (wd < 0)
+            {
+                this->_logs += "[ ERROR ] inotify_add_watch(" + path + ") failed: " + std::string(strerror(errno)) + '\n';
+                return;
+            }
+            this->_watch_map[wd] = path;
+            this->_logs += "[ INFO ] Watching  file: " + path + '\n';
+        }
 }
 
 void IronDome::_watch_crypto_cmds()
@@ -297,12 +312,32 @@ void IronDome::_watch_crypto_cmds()
         struct stat s;
         std::string line;
         while (std::getline(file, line))
-        {
-                path = "/usr/bin/" + line;
-                if (!stat(path.c_str(), &s))
-                        this->_add_watches(path);
-        }
+                if (!stat(line.c_str(), &s))
+                        this->_add_watches(line);
         file.close();
+}
+
+bool IronDome::_is_crypto_cmd(const std::string &path)
+{
+        std::string crypto_cmd_file(DATA_DIR);
+        crypto_cmd_file += '/';
+        crypto_cmd_file += CRYPTO_CMD_FILE;
+        std::ifstream file(crypto_cmd_file);
+        if (!file.is_open())
+        {
+                this->_logs += "[ ERROR ] Can't open " + crypto_cmd_file + ": " + std::string(strerror(errno)) + '\n';
+                return false;
+        }
+
+        std::string line;
+        while (std::getline(file, line))
+                if (line == path)
+                {
+                        file.close();
+                        return true;
+                }
+        file.close();
+        return false;
 }
 
 void IronDome::_work()
@@ -347,7 +382,6 @@ void IronDome::_work()
                 if (length < 0 && (errno != EAGAIN && errno != EWOULDBLOCK))
                         this->_logs += "[ ERROR ] read() failed: " + std::string(strerror(errno)) + '\n';
 
-                this->_check_crypto_use(read_counter);
                 this->_save_logs();
                 sleep(SLEEPTIME);
         }
@@ -367,7 +401,12 @@ void IronDome::_inotify_check(struct inotify_event *event, std::unordered_map<st
                         return;
                 read_counter[path]++;
                 if (read_counter[path] > this->_read_treshold)
+                {
+                    if (this->_is_crypto_cmd(path))
+                        this->_logs += "[ WARNING ] CRYPTO: " + std::string(path) + '\n';
+                    else
                         this->_logs += "[ WARNING ] READ: " + std::string(path) + '\n';
+                }
         }
         else if (event->mask & IN_MODIFY)
                 this->_launch_entropy_update(path);
@@ -508,37 +547,6 @@ std::string IronDome::_check_entropy_file(const std::string &entropy_file, const
                 outfile.close();
         }
         return std::string();
-}
-
-void IronDome::_check_crypto_use(const std::unordered_map<std::string, unsigned short> &read_counter)
-{
-        std::string path(DATA_DIR);
-        path += '/';
-        path += CRYPTO_CMD_FILE;
-        std::ifstream file(path);
-        if (!file.is_open())
-        {
-                this->_logs += "[ ERROR ] Can't open " + std::string(DATA_DIR) + '/' + CRYPTO_CMD_FILE + ": " + std::string(strerror(errno)) + '\n';
-                return;
-        }
-        std::string line;
-        std::string keyword;
-        for (auto &it : read_counter)
-        {
-                if (it.first.empty())
-                        continue;
-                keyword = this->_split_str(it.first, '/').back();
-                bool found = false;
-
-                file.clear();
-                file.seekg(0, std::ios::beg);
-                while (std::getline(file, line))
-                        if (line == keyword && (found = true))
-                                break;
-                if (found && it.second > this->_crypto_use_treshold)
-                        this->_logs += "[ WARNING ] CRYPTO: " + it.first + '\n';
-        }
-        file.close();
 }
 
 void IronDome::_do_backup()

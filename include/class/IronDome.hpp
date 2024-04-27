@@ -10,10 +10,10 @@
 #define ENTROPY_FILE "entropy.txt"
 #define DEFAULT_BACKUP_INTERVAL 2
 
-#define DEFAULT_ROOT "."
+#define DEFAULT_ROOT "/"
 #define DEFAULT_LOGFILE "/var/log/IronDome.log"
-#define DEFAULT_READ_TRESHOLD 0
-#define DEFAULT_CRYPTO_USE_TRESHOLD 0
+#define DEFAULT_READ_TRESHOLD 2
+#define DEFAULT_CRYPTO_USE_TRESHOLD 1
 #define DEFAULT_ENTROPY_TRESHOLD 0.9
 
 #include <iostream>
@@ -84,6 +84,7 @@ protected:
         std::vector<std::string> _split_str(const std::string &src, const char &delimiter) const;
         void _add_watches(const std::string &path);
         void _watch_crypto_cmds();
+        bool _is_crypto_cmd(const std::string &path);
         void _work();
         void _inotify_check(struct inotify_event *event, std::unordered_map<std::string, unsigned short> &read_counter);
         void _launch_entropy_update(const std::string &path);
