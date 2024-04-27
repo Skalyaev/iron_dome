@@ -8,14 +8,13 @@
 > *Malheureusement, il n'existe aucun moyen totalement efficace de prévenir les attaques par rançongiciel, mais en réalisant ce projet, vous serez en mesure de comprendre les points faibles d'un système informatique face à ces infections par des logiciels malveillants.*
 
 ## Checklist
-- [x] Detect disk read abuse
-- [x] Detect intensive use of cryptographic activity
-- [x] Detect changes in the entropy of the files
-- [x] Logs
-- [x] Backup system
-- [x] Never exceed 100 MB of memory in use
-- [x] No leak
-- [x] No crash
+- [x] Détection d'abus de lecture de disque
+- [x] Détection d'utilisation intensive d'activité cryptographique
+- [x] Détection des changements dans l'entropie des fichiers
+- [x] Sauvegarde système
+- [x] Utilisation de mémoire inférieure à 100 MB
+- [x] Aucune fuite
+- [x] Aucun crash
 
 ## Install
 ```bash
