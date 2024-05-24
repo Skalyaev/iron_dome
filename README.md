@@ -43,3 +43,4 @@ cat /var/log/IronDome.log
 sudo make docker-stop
 sudo make docker-clean
 ```
+
